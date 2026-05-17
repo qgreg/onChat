@@ -71,6 +71,7 @@ export function useChromeAI() {
         systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
         expectedLanguage: 'en',
         language: 'en',
+        expectedOutputs: [{ type: "text", languages: ["en"] }]
       };
 
       if (typeof lm.create === 'function') {
