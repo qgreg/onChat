@@ -66,17 +66,18 @@ export function useChromeAI() {
 
       // Initialize a session
       let newSession;
+      
+      const config = {
+        systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
+        expectedLanguage: 'en',
+        language: 'en',
+      };
+
       if (typeof lm.create === 'function') {
-        newSession = await lm.create({
-          systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
-          expectedLanguage: 'en',
-        });
+        newSession = await lm.create(config);
       } else {
         // Fallback if create is not static
-        newSession = await new (lm as any)({
-          systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
-          expectedLanguage: 'en',
-        });
+        newSession = await new (lm as any)(config);
       }
       
       setSession(newSession);
