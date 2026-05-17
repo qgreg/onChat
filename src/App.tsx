@@ -35,7 +35,7 @@ function App() {
           {isAvailable === true && (
             <span className="flex items-center gap-2 text-xs font-medium px-4 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 shadow-inner shadow-green-500/10">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
-              Gemini Nano Ready
+              Local AI Ready
             </span>
           )}
         </header>
@@ -45,10 +45,13 @@ function App() {
           <div className="bg-orange-900/40 border-b border-orange-500/30 p-4 flex items-start gap-3 text-orange-200">
             <WarningAmberIcon className="text-orange-400 shrink-0" />
             <div className="flex-grow">
-              <h3 className="font-semibold text-orange-400 mb-1">Chrome Prompt API Not Available</h3>
+              <h3 className="font-semibold text-orange-400 mb-1">Built-in AI Not Available</h3>
               <p className="text-sm">
-                Please ensure you are using a compatible version of Chrome and have the required flags enabled (`#prompt-api-for-gemini-nano`, `#optimization-guide-on-device-model`).
-                <br />
+                Ensure you are using a compatible browser with the correct flags enabled:
+                <ul className="list-disc ml-5 mt-1 mb-2">
+                  <li><strong>Chrome:</strong> Enable <code>#prompt-api-for-gemini-nano</code> and <code>#optimization-guide-on-device-model</code></li>
+                  <li><strong>Edge:</strong> Enable <code>#prompt-api-for-phi-mini</code> (Dev/Canary)</li>
+                </ul>
                 <em className="break-all">Details: {error || 'Built-in AI API not detected.'}</em>
               </p>
               {error?.includes('gesture') && (
