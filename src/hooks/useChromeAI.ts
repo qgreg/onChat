@@ -107,7 +107,7 @@ export function useChromeAI() {
     };
   }, [initAI]);
 
-  const sendMessage = useCallback(async (text: string): Promise<string | null> => {
+  const sendMessage = useCallback(async (text: string, onUpdate?: (partialResponse: string) => void): Promise<string | null> => {
     if (!session) {
       setError('Session not initialized.');
       return null;
@@ -116,10 +116,25 @@ export function useChromeAI() {
     setIsGenerating(true);
     setError(null);
     try {
-      // Use the Prompt API
-      const result = await session.prompt(text);
-      setIsGenerating(false);
-      return result;
+      if (typeof session.promptStreaming === 'function' && onUpdate) {
+        const stream = session.promptStreaming(text);
+        let fullResponse = '';
+        for await (const chunk of stream) {
+          // Handle both chunked and cumulative (bug) behavior from the Prompt API
+          if (fullResponse && chunk.startsWith(fullResponse)) {
+            fullResponse = chunk;
+          } else {
+            fullResponse += chunk;
+          }
+          onUpdate(fullResponse);
+        }
+        setIsGenerating(false);
+        return fullResponse;
+      } else {
+        const result = await session.prompt(text);
+        setIsGenerating(false);
+        return result;
+      }
     } catch (err: any) {
       console.error('Error generating prompt:', err);
       setError(err.message || 'Error generating response.');

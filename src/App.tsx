@@ -10,14 +10,20 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 function App() {
   const { isAvailable, isGenerating, error, sendMessage, initAI } = useChromeAI();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [streamingMessage, setStreamingMessage] = useState<string>('');
 
   const handleSend = async (content: string) => {
     // Add user message immediately
     const userMsg: ChatMessage = { role: 'user', content };
     setMessages((prev) => [...prev, userMsg]);
 
+    setStreamingMessage('');
     // Get response
-    const response = await sendMessage(content);
+    const response = await sendMessage(content, (chunk) => {
+      setStreamingMessage(chunk);
+    });
+    
+    setStreamingMessage('');
     if (response) {
       setMessages((prev) => [...prev, { role: 'model', content: response }]);
     }
@@ -67,7 +73,7 @@ function App() {
         )}
 
         {/* Main Chat Area */}
-        <ChatInterface messages={messages} isGenerating={isGenerating} />
+        <ChatInterface messages={messages} isGenerating={isGenerating} streamingMessage={streamingMessage} />
 
         {/* Input Area */}
         <div className="w-full">

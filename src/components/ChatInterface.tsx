@@ -6,9 +6,10 @@ import PersonIcon from '@mui/icons-material/Person';
 interface ChatInterfaceProps {
   messages: ChatMessage[];
   isGenerating: boolean;
+  streamingMessage?: string;
 }
 
-export function ChatInterface({ messages, isGenerating }: ChatInterfaceProps) {
+export function ChatInterface({ messages, isGenerating, streamingMessage }: ChatInterfaceProps) {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,10 +61,16 @@ export function ChatInterface({ messages, isGenerating }: ChatInterfaceProps) {
             <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-tr from-indigo-500 to-blue-500 text-white shadow-indigo-500/30">
               <SmartToyIcon fontSize="small" />
             </div>
-            <div className="glass-panel rounded-3xl rounded-tl-sm p-5 flex items-center gap-2 shadow-xl">
-              <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]"></span>
-              <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]" style={{ animationDelay: '0.2s' }}></span>
-              <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]" style={{ animationDelay: '0.4s' }}></span>
+            <div className="glass-panel rounded-3xl rounded-tl-sm p-5 shadow-xl max-w-[85%] md:max-w-[75%] text-gray-200">
+              {streamingMessage ? (
+                <p className="whitespace-pre-wrap">{streamingMessage}</p>
+              ) : (
+                <div className="flex items-center gap-2 h-6">
+                  <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]"></span>
+                  <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]" style={{ animationDelay: '0.2s' }}></span>
+                  <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce shadow-[0_0_8px_rgba(129,140,248,0.8)]" style={{ animationDelay: '0.4s' }}></span>
+                </div>
+              )}
             </div>
           </div>
         )}
