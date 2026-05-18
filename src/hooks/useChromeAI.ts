@@ -13,21 +13,62 @@ interface LegacyCapabilities {
 }
 
 interface ChromeAISession {
-  prompt(input: string): Promise<string>;
-  promptStreaming?: (input: string) => AsyncIterable<string>;
+  prompt(input: string, options?: ChromePromptOptions): Promise<string>;
+  promptStreaming?: (input: string, options?: ChromePromptOptions) => AsyncIterable<string>;
   destroy?: () => void;
 }
 
-interface ChromeLanguageModelConfig {
+interface ChromeLanguageModelExpected {
+  type: 'text';
+  languages: string[];
+}
+
+interface ChromeLanguageModelMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface ChromeLanguageModelCoreConfig {
+  expectedInputs: ChromeLanguageModelExpected[];
+  expectedOutputs: ChromeLanguageModelExpected[];
+}
+
+interface ChromeLanguageModelAvailabilityConfig {
+  expectedInputs?: ChromeLanguageModelExpected[];
+  expectedOutputs?: ChromeLanguageModelExpected[];
+}
+
+interface ChromeLanguageModelCreateConfig extends ChromeLanguageModelCoreConfig {
+  initialPrompts: ChromeLanguageModelMessage[];
+}
+
+interface ChromePromptOptions {
+  expectedOutputs?: ChromeLanguageModelExpected[];
+  responseConstraint?: Record<string, unknown>;
+  omitResponseConstraintInput?: boolean;
+  signal?: AbortSignal;
+}
+
+interface MinimalLanguageModelCreateConfig {
+  initialPrompts: ChromeLanguageModelMessage[];
+  expectedOutputs: ChromeLanguageModelExpected[];
+}
+
+interface LegacyChromeLanguageModelConfig {
   systemPrompt: string;
   expectedLanguage: string;
   language: string;
   expectedOutputs: Array<{ type: 'text'; languages: string[] }>;
 }
 
+type ChromeLanguageModelConfig =
+  | ChromeLanguageModelCreateConfig
+  | MinimalLanguageModelCreateConfig
+  | LegacyChromeLanguageModelConfig;
+
 interface ChromeLanguageModelFactory {
   create?: (config: ChromeLanguageModelConfig) => Promise<ChromeAISession>;
-  availability?: (config?: ChromeLanguageModelConfig) => Promise<ChromeAvailability>;
+  availability?: (config?: ChromeLanguageModelAvailabilityConfig) => Promise<ChromeAvailability>;
   capabilities?: () => Promise<LegacyCapabilities>;
 }
 
@@ -114,6 +155,87 @@ function getCorruptOutputMessage(): string {
   return 'The browser returned unreadable local model output. This can happen in experimental built-in AI implementations; try Chrome, update your browser, or try again after the local model finishes updating.';
 }
 
+function isMicrosoftEdge(): boolean {
+  return /\bEdg\//.test(navigator.userAgent);
+}
+
+function createMinimalConfig(): MinimalLanguageModelCreateConfig {
+  return {
+    initialPrompts: [
+      {
+        role: 'system',
+        content: 'You are a helpful, friendly AI assistant running locally in the browser. Reply in English.',
+      },
+    ],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  };
+}
+
+function createStandardConfig(): ChromeLanguageModelCreateConfig {
+  return {
+    initialPrompts: [
+      {
+        role: 'system',
+        content: 'You are a helpful, friendly AI assistant running locally in the browser. Reply in English.',
+      },
+    ],
+    expectedInputs: [{ type: 'text', languages: ['en'] }],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  };
+}
+
+function createStandardCoreConfig(): ChromeLanguageModelCoreConfig {
+  return {
+    expectedInputs: [{ type: 'text', languages: ['en'] }],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  };
+}
+
+function createOutputLanguageConfig(): Pick<ChromeLanguageModelCoreConfig, 'expectedOutputs'> {
+  return {
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  };
+}
+
+function createLegacyConfig(): LegacyChromeLanguageModelConfig {
+  return {
+    systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser. Reply in English.',
+    expectedLanguage: 'en',
+    language: 'en',
+    expectedOutputs: [{ type: 'text', languages: ['en'] }],
+  };
+}
+
+async function createLanguageModelSession(
+  lm: ChromeLanguageModelFactory | ConstructableLanguageModel,
+  configs: ChromeLanguageModelConfig[],
+): Promise<ChromeAISession> {
+  if (hasCreate(lm)) {
+    let lastError: unknown = null;
+
+    for (const config of configs) {
+      try {
+        return await lm.create(config);
+      } catch (error) {
+        lastError = error;
+        console.warn('LanguageModel.create config failed; trying fallback config.', error);
+      }
+    }
+
+    try {
+      return lm.create(createLegacyConfig());
+    } catch (error) {
+      throw lastError ?? error;
+    }
+  }
+
+  if (isConstructableLanguageModel(lm)) {
+    return new lm(configs[0]);
+  }
+
+  throw new Error('AI model API found, but it does not expose a supported create method.');
+}
+
 export function useChromeAI() {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -126,17 +248,26 @@ export function useChromeAI() {
       const nav = navigator;
       const windowAI = getObjectProperty<ChromeAIContainer>(w, 'ai');
       const navigatorAI = getObjectProperty<ChromeAIContainer>(nav, 'ai');
+      const globalLanguageModel = getObjectProperty(w, 'LanguageModel');
       let lm: ChromeLanguageModelFactory | ConstructableLanguageModel | null = null;
 
-      // In Chrome 138+, the Prompt API moved to navigator.ai
-      const candidates = [
-        navigatorAI?.languageModel,
-        windowAI?.languageModel,
-        windowAI?.assistant,
-        windowAI,
-        getObjectProperty(w, 'languageModel'),
-        getObjectProperty(w, 'LanguageModel'),
-      ];
+      const candidates = isMicrosoftEdge()
+        ? [
+            globalLanguageModel,
+            navigatorAI?.languageModel,
+            windowAI?.languageModel,
+            windowAI?.assistant,
+            windowAI,
+            getObjectProperty(w, 'languageModel'),
+          ]
+        : [
+            navigatorAI?.languageModel,
+            windowAI?.languageModel,
+            windowAI?.assistant,
+            windowAI,
+            getObjectProperty(w, 'languageModel'),
+            globalLanguageModel,
+          ];
 
       for (const candidate of candidates) {
         if (isLanguageModelFactory(candidate) || isConstructableLanguageModel(candidate)) {
@@ -164,15 +295,14 @@ export function useChromeAI() {
         return;
       }
 
-      const config: ChromeLanguageModelConfig = {
-        systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
-        expectedLanguage: 'en',
-        language: 'en',
-        expectedOutputs: [{ type: 'text', languages: ['en'] }]
-      };
+      const availabilityConfig = isMicrosoftEdge() ? createOutputLanguageConfig() : createStandardCoreConfig();
+      const config = createStandardConfig();
+      const sessionConfigs = isMicrosoftEdge()
+        ? [createMinimalConfig(), config]
+        : [config, createMinimalConfig()];
 
       if (hasAvailability(lm)) {
-        const availability = await lm.availability(config);
+        const availability = await lm.availability(availabilityConfig);
 
         if (availability === 'unavailable') {
           setIsAvailable(false);
@@ -201,18 +331,7 @@ export function useChromeAI() {
       }
 
       // Initialize a session
-      let newSession: ChromeAISession;
-
-      if (hasCreate(lm)) {
-        newSession = await lm.create(config);
-      } else if (isConstructableLanguageModel(lm)) {
-        // Fallback if create is not static
-        newSession = new lm(config);
-      } else {
-        setIsAvailable(false);
-        setError('AI model API found, but it does not expose a supported create method.');
-        return;
-      }
+      const newSession = await createLanguageModelSession(lm, sessionConfigs);
       
       setSession(newSession);
       setIsAvailable(true);
@@ -249,8 +368,10 @@ export function useChromeAI() {
     setIsGenerating(true);
     setError(null);
     try {
+      const promptOptions = createOutputLanguageConfig();
+
       if (typeof session.promptStreaming === 'function' && onUpdate) {
-        const stream = session.promptStreaming(text);
+        const stream = session.promptStreaming(text, promptOptions);
         let fullResponse = '';
         for await (const chunk of stream) {
           // Handle both chunked and cumulative (bug) behavior from the Prompt API
@@ -272,7 +393,7 @@ export function useChromeAI() {
 
         return fullResponse;
       } else {
-        const result = await session.prompt(text);
+        const result = await session.prompt(text, promptOptions);
         setIsGenerating(false);
 
         if (looksLikeCorruptModelOutput(result)) {

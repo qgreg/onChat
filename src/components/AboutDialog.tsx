@@ -45,6 +45,11 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
           to a hosted model service.
         </p>
         <p>
+          Chrome is currently the recommended browser. Edge exposes compatible built-in AI APIs in some
+          builds, but may return unreadable output while Microsoft's implementation is still in developer
+          preview.
+        </p>
+        <p>
           The project was initially prompted by Greg Quinlan from Antigravity and subsequently developed
           with Codex. The name onChat was coined by Ian Lurie.
         </p>
