@@ -75,17 +75,19 @@ function App() {
             <WarningAmberIcon className="text-orange-400 shrink-0" />
             <div className="flex-grow">
               <h3 className="font-semibold text-orange-400 mb-1">Built-in AI Not Available</h3>
-              <p className="text-sm">
+              <div className="text-sm">
                 Ensure you are using a compatible browser with the correct flags enabled:
                 <ul className="list-disc ml-5 mt-1 mb-2">
                   <li><strong>Chrome:</strong> Enable <code>#prompt-api-for-gemini-nano</code> and <code>#optimization-guide-on-device-model</code></li>
                   <li><strong>Edge:</strong> Enable <code>#prompt-api-for-phi-mini</code> (Dev/Canary)</li>
                 </ul>
                 <em className="break-all">Details: {error || 'Built-in AI API not detected.'}</em>
-              </p>
-              {error?.includes('gesture') && (
+              </div>
+              {(error?.includes('gesture') || error?.includes('needs a click')) && (
                 <button
-                  onClick={initAI}
+                  onClick={() => {
+                    void initAI();
+                  }}
                   className="mt-3 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded-md text-sm font-medium transition-colors border border-orange-500/30 shadow-sm"
                 >
                   Initialize AI Session

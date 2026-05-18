@@ -29,7 +29,7 @@ export function ChatInterface({ messages, isGenerating, streamingMessage }: Chat
             </div>
             <h2 className="text-3xl font-extrabold text-white mb-3 tracking-tight">Local AI Chat</h2>
             <p className="max-w-md text-gray-400 leading-relaxed text-lg">
-              Start a conversation to see the power of Google Chrome's local Gemini Nano model running right in your browser.
+              Start a conversation with a browser-native local AI model running right on your device.
             </p>
           </div>
         )}

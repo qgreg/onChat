@@ -6,6 +6,7 @@ export interface ChatMessage {
 }
 
 type LegacyAvailability = 'no' | 'after-download' | 'readily' | 'available' | string;
+type ChromeAvailability = 'unavailable' | 'downloadable' | 'downloading' | 'available' | string;
 
 interface LegacyCapabilities {
   available: LegacyAvailability;
@@ -26,6 +27,7 @@ interface ChromeLanguageModelConfig {
 
 interface ChromeLanguageModelFactory {
   create?: (config: ChromeLanguageModelConfig) => Promise<ChromeAISession>;
+  availability?: (config?: ChromeLanguageModelConfig) => Promise<ChromeAvailability>;
   capabilities?: () => Promise<LegacyCapabilities>;
 }
 
@@ -51,10 +53,12 @@ function isLanguageModelFactory(value: unknown): value is ChromeLanguageModelFac
   }
 
   const create = getObjectProperty(value, 'create');
+  const availability = getObjectProperty(value, 'availability');
   const capabilities = getObjectProperty(value, 'capabilities');
 
   return (
     (create === undefined || typeof create === 'function') &&
+    (availability === undefined || typeof availability === 'function') &&
     (capabilities === undefined || typeof capabilities === 'function')
   );
 }
@@ -71,6 +75,10 @@ function hasCreate(value: unknown): value is Required<Pick<ChromeLanguageModelFa
   return typeof getObjectProperty(value, 'create') === 'function';
 }
 
+function hasAvailability(value: unknown): value is Required<Pick<ChromeLanguageModelFactory, 'availability'>> {
+  return typeof getObjectProperty(value, 'availability') === 'function';
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
@@ -81,7 +89,7 @@ export function useChromeAI() {
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<ChromeAISession | null>(null);
 
-  const initAI = useCallback(async () => {
+  const initAI = useCallback(async (allowDownload = true) => {
     try {
       const w = window;
       const nav = navigator;
@@ -125,7 +133,28 @@ export function useChromeAI() {
         return;
       }
 
-      if (hasCapabilities(lm)) {
+      const config: ChromeLanguageModelConfig = {
+        systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
+        expectedLanguage: 'en',
+        language: 'en',
+        expectedOutputs: [{ type: 'text', languages: ['en'] }]
+      };
+
+      if (hasAvailability(lm)) {
+        const availability = await lm.availability(config);
+
+        if (availability === 'unavailable') {
+          setIsAvailable(false);
+          setError('AI model API found, but no compatible local model is available. Check chrome://components to ensure Optimization Guide On Device Model is installed, or restart Chrome.');
+          return;
+        }
+
+        if (!allowDownload && (availability === 'downloadable' || availability === 'downloading')) {
+          setIsAvailable(false);
+          setError('AI model is available but needs a click to download or finish setup. Select Initialize AI Session to continue.');
+          return;
+        }
+      } else if (hasCapabilities(lm)) {
         const capabilities = await lm.capabilities();
         if (capabilities.available === 'no') {
           setIsAvailable(false);
@@ -142,13 +171,6 @@ export function useChromeAI() {
 
       // Initialize a session
       let newSession: ChromeAISession;
-      
-      const config: ChromeLanguageModelConfig = {
-        systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
-        expectedLanguage: 'en',
-        language: 'en',
-        expectedOutputs: [{ type: 'text', languages: ['en'] }]
-      };
 
       if (hasCreate(lm)) {
         newSession = await lm.create(config);
@@ -178,7 +200,7 @@ export function useChromeAI() {
   }, [session]);
 
   useEffect(() => {
-    void Promise.resolve().then(initAI);
+    void Promise.resolve().then(() => initAI(false));
 
     return () => {
       if (sessionRef.current && typeof sessionRef.current.destroy === 'function') {
