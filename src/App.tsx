@@ -76,11 +76,8 @@ function App() {
             <div className="flex-grow">
               <h3 className="font-semibold text-orange-400 mb-1">Built-in AI Not Available</h3>
               <div className="text-sm">
-                Ensure you are using a compatible browser with the correct flags enabled:
-                <ul className="list-disc ml-5 mt-1 mb-2">
-                  <li><strong>Chrome:</strong> Enable <code>#prompt-api-for-gemini-nano</code> and <code>#optimization-guide-on-device-model</code></li>
-                  <li><strong>Edge:</strong> Enable <code>#prompt-api-for-phi-mini</code> (Dev/Canary)</li>
-                </ul>
+                Use a browser with built-in local AI support. If this is your first time using it, your
+                browser may need to download or finish setting up the local model.
                 <em className="break-all">Details: {error || 'Built-in AI API not detected.'}</em>
               </div>
               {(error?.includes('gesture') || error?.includes('needs a click')) && (

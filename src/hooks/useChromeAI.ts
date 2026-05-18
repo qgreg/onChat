@@ -83,6 +83,37 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function looksLikeCorruptModelOutput(text: string): boolean {
+  const characters = Array.from(text.trim()).filter(character => !/\s/.test(character));
+
+  if (characters.length < 8) {
+    return false;
+  }
+
+  const suspiciousCharacters = characters.filter(character => {
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    return (
+      character === '\uFFFD' ||
+      character === '\u25A1' ||
+      character === '\u25A0' ||
+      character === '\u2B1A' ||
+      codePoint < 32 ||
+      (codePoint >= 0xE000 && codePoint <= 0xF8FF)
+    );
+  });
+
+  const readableCharacters = characters.filter(character => {
+    return /[A-Za-z0-9.,!?;:'"()[\]{}\-_`/#@&%+$=<>\\|]/.test(character);
+  });
+
+  return suspiciousCharacters.length / characters.length > 0.35 || readableCharacters.length / characters.length < 0.2;
+}
+
+function getCorruptOutputMessage(): string {
+  return 'The browser returned unreadable local model output. This can happen in experimental built-in AI implementations; try Chrome, update your browser, or try again after the local model finishes updating.';
+}
+
 export function useChromeAI() {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -145,7 +176,7 @@ export function useChromeAI() {
 
         if (availability === 'unavailable') {
           setIsAvailable(false);
-          setError('AI model API found, but no compatible local model is available. Check chrome://components to ensure Optimization Guide On Device Model is installed, or restart Chrome.');
+          setError('AI model API found, but no compatible local model is available. Make sure your browser supports built-in local AI, then restart or update the browser if needed.');
           return;
         }
 
@@ -158,7 +189,7 @@ export function useChromeAI() {
         const capabilities = await lm.capabilities();
         if (capabilities.available === 'no') {
           setIsAvailable(false);
-          setError('AI model API found, but reports capabilities as "no". Check chrome://components to ensure Optimization Guide On Device Model is fully downloaded, or try restarting Chrome again.');
+          setError('AI model API found, but reports capabilities as "no". Make sure your browser supports built-in local AI, then restart or update the browser if needed.');
           return;
         }
 
@@ -228,13 +259,27 @@ export function useChromeAI() {
           } else {
             fullResponse += chunk;
           }
-          onUpdate(fullResponse);
+          if (!looksLikeCorruptModelOutput(fullResponse)) {
+            onUpdate(fullResponse);
+          }
         }
         setIsGenerating(false);
+
+        if (looksLikeCorruptModelOutput(fullResponse)) {
+          setError(getCorruptOutputMessage());
+          return null;
+        }
+
         return fullResponse;
       } else {
         const result = await session.prompt(text);
         setIsGenerating(false);
+
+        if (looksLikeCorruptModelOutput(result)) {
+          setError(getCorruptOutputMessage());
+          return null;
+        }
+
         return result;
       }
     } catch (err: unknown) {
