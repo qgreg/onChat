@@ -4,13 +4,17 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { theme } from './theme';
 import { ChatInterface } from './components/ChatInterface';
 import { MessageInput } from './components/MessageInput';
+import { AboutDialog } from './components/AboutDialog';
 import { useChromeAI, type ChatMessage } from './hooks/useChromeAI';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import IconButton from '@mui/material/IconButton';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 function App() {
   const { isAvailable, isGenerating, error, sendMessage, initAI } = useChromeAI();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const handleSend = async (content: string) => {
     // Add user message immediately
@@ -38,12 +42,31 @@ function App() {
           <h1 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 bg-clip-text text-transparent tracking-tight">
             onChat.
           </h1>
-          {isAvailable === true && (
-            <span className="flex items-center gap-2 text-xs font-medium px-4 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 shadow-inner shadow-green-500/10">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
-              Local AI Ready
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {isAvailable === true && (
+              <span className="flex items-center gap-2 text-xs font-medium px-4 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 shadow-inner shadow-green-500/10">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
+                Local AI Ready
+              </span>
+            )}
+            <IconButton
+              aria-label="About onChat"
+              onClick={() => setIsAboutOpen(true)}
+              size="small"
+              sx={{
+                color: 'rgba(255, 255, 255, 0.72)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                bgcolor: 'rgba(255, 255, 255, 0.04)',
+                '&:hover': {
+                  color: 'white',
+                  bgcolor: 'rgba(255, 255, 255, 0.09)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                },
+              }}
+            >
+              <InfoOutlinedIcon fontSize="small" />
+            </IconButton>
+          </div>
         </header>
 
         {/* Status Banners */}
@@ -84,6 +107,7 @@ function App() {
           )}
           <MessageInput onSend={handleSend} disabled={isGenerating || isAvailable === false || isAvailable === null} />
         </div>
+        <AboutDialog open={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
       </div>
     </ThemeProvider>
   );
