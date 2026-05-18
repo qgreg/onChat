@@ -5,31 +5,105 @@ export interface ChatMessage {
   content: string;
 }
 
+type LegacyAvailability = 'no' | 'after-download' | 'readily' | 'available' | string;
+
+interface LegacyCapabilities {
+  available: LegacyAvailability;
+}
+
+interface ChromeAISession {
+  prompt(input: string): Promise<string>;
+  promptStreaming?: (input: string) => AsyncIterable<string>;
+  destroy?: () => void;
+}
+
+interface ChromeLanguageModelConfig {
+  systemPrompt: string;
+  expectedLanguage: string;
+  language: string;
+  expectedOutputs: Array<{ type: 'text'; languages: string[] }>;
+}
+
+interface ChromeLanguageModelFactory {
+  create?: (config: ChromeLanguageModelConfig) => Promise<ChromeAISession>;
+  capabilities?: () => Promise<LegacyCapabilities>;
+}
+
+interface ChromeAIContainer {
+  languageModel?: unknown;
+  assistant?: unknown;
+  create?: (config: ChromeLanguageModelConfig) => Promise<ChromeAISession>;
+}
+
+type ConstructableLanguageModel = new (config: ChromeLanguageModelConfig) => ChromeAISession;
+
+function getObjectProperty<T>(source: unknown, property: string): T | undefined {
+  if (typeof source !== 'object' && typeof source !== 'function' || source === null) {
+    return undefined;
+  }
+
+  return (source as Record<string, unknown>)[property] as T | undefined;
+}
+
+function isLanguageModelFactory(value: unknown): value is ChromeLanguageModelFactory {
+  if ((typeof value !== 'object' && typeof value !== 'function') || value === null) {
+    return false;
+  }
+
+  const create = getObjectProperty(value, 'create');
+  const capabilities = getObjectProperty(value, 'capabilities');
+
+  return (
+    (create === undefined || typeof create === 'function') &&
+    (capabilities === undefined || typeof capabilities === 'function')
+  );
+}
+
+function isConstructableLanguageModel(value: unknown): value is ConstructableLanguageModel {
+  return typeof value === 'function';
+}
+
+function hasCapabilities(value: unknown): value is Required<Pick<ChromeLanguageModelFactory, 'capabilities'>> {
+  return typeof getObjectProperty(value, 'capabilities') === 'function';
+}
+
+function hasCreate(value: unknown): value is Required<Pick<ChromeLanguageModelFactory, 'create'>> {
+  return typeof getObjectProperty(value, 'create') === 'function';
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function useChromeAI() {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<ChromeAISession | null>(null);
 
   const initAI = useCallback(async () => {
     try {
-      const w = window as any;
-      const nav = navigator as any;
-      let lm = null;
+      const w = window;
+      const nav = navigator;
+      const windowAI = getObjectProperty<ChromeAIContainer>(w, 'ai');
+      const navigatorAI = getObjectProperty<ChromeAIContainer>(nav, 'ai');
+      let lm: ChromeLanguageModelFactory | ConstructableLanguageModel | null = null;
 
       // In Chrome 138+, the Prompt API moved to navigator.ai
-      if (nav.ai && nav.ai.languageModel) {
-        lm = nav.ai.languageModel;
-      } else if (w.ai && w.ai.languageModel) {
-        lm = w.ai.languageModel;
-      } else if (w.ai && w.ai.assistant) {
-        lm = w.ai.assistant;
-      } else if (w.ai && typeof w.ai.create === 'function') {
-        lm = w.ai;
-      } else if (w.languageModel) {
-        lm = w.languageModel;
-      } else if (w.LanguageModel) {
-        lm = w.LanguageModel;
+      const candidates = [
+        navigatorAI?.languageModel,
+        windowAI?.languageModel,
+        windowAI?.assistant,
+        windowAI,
+        getObjectProperty(w, 'languageModel'),
+        getObjectProperty(w, 'LanguageModel'),
+      ];
+
+      for (const candidate of candidates) {
+        if (isLanguageModelFactory(candidate) || isConstructableLanguageModel(candidate)) {
+          lm = candidate;
+          break;
+        }
       }
 
       let debugString = '';
@@ -37,11 +111,13 @@ export function useChromeAI() {
         const wKeys = Object.getOwnPropertyNames(w).filter(k => /ai|model|prompt|gemini/i.test(k));
         const nKeys = Object.getOwnPropertyNames(nav).filter(k => /ai|model|prompt|gemini/i.test(k));
         const wProtoKeys = [];
-        for (let k in w) {
+        for (const k in w) {
           if (/ai|model|prompt|gemini/i.test(k)) wProtoKeys.push(k);
         }
         debugString = `Window keys: ${wKeys.join(', ')} | Navigator keys: ${nKeys.join(', ')} | Window in-keys: ${wProtoKeys.join(', ')}`;
-      } catch(e) {}
+      } catch {
+        debugString = 'Unable to inspect AI globals.';
+      }
 
       if (!lm) {
         setIsAvailable(false);
@@ -49,7 +125,7 @@ export function useChromeAI() {
         return;
       }
 
-      if (typeof lm.capabilities === 'function') {
+      if (hasCapabilities(lm)) {
         const capabilities = await lm.capabilities();
         if (capabilities.available === 'no') {
           setIsAvailable(false);
@@ -65,40 +141,44 @@ export function useChromeAI() {
       }
 
       // Initialize a session
-      let newSession;
+      let newSession: ChromeAISession;
       
-      const config = {
+      const config: ChromeLanguageModelConfig = {
         systemPrompt: 'You are a helpful, friendly AI assistant running locally in the browser.',
         expectedLanguage: 'en',
         language: 'en',
-        expectedOutputs: [{ type: "text", languages: ["en"] }]
+        expectedOutputs: [{ type: 'text', languages: ['en'] }]
       };
 
-      if (typeof lm.create === 'function') {
+      if (hasCreate(lm)) {
         newSession = await lm.create(config);
-      } else {
+      } else if (isConstructableLanguageModel(lm)) {
         // Fallback if create is not static
-        newSession = await new (lm as any)(config);
+        newSession = new lm(config);
+      } else {
+        setIsAvailable(false);
+        setError('AI model API found, but it does not expose a supported create method.');
+        return;
       }
       
       setSession(newSession);
       setIsAvailable(true);
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to initialize Chrome AI:', err);
       setIsAvailable(false);
-      setError(err.message || 'Failed to initialize AI. See console for details.');
+      setError(getErrorMessage(err, 'Failed to initialize AI. See console for details.'));
     }
   }, []);
 
-  const sessionRef = useRef<any>(null);
+  const sessionRef = useRef<ChromeAISession | null>(null);
 
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
 
   useEffect(() => {
-    initAI();
+    void Promise.resolve().then(initAI);
 
     return () => {
       if (sessionRef.current && typeof sessionRef.current.destroy === 'function') {
@@ -135,9 +215,9 @@ export function useChromeAI() {
         setIsGenerating(false);
         return result;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error generating prompt:', err);
-      setError(err.message || 'Error generating response.');
+      setError(getErrorMessage(err, 'Error generating response.'));
       setIsGenerating(false);
       return null;
     }
